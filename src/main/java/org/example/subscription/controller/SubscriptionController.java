@@ -22,7 +22,7 @@ public class SubscriptionController {
             @RequestParam Long planId,
             @RequestParam(required = false) String couponCode) {
 
-        return subscriptionService.createSubscription(userId, planId,couponCode);
+        return subscriptionService.createSubscription(userId, planId, couponCode);
     }
 
     @GetMapping
@@ -33,5 +33,13 @@ public class SubscriptionController {
     @PutMapping("/{id}/cancel")
     public SubscriptionResponseDTO cancel(@PathVariable Long id) {
         return subscriptionService.cancelSubscription(id);
+    }
+
+    @PutMapping("/{id}/change-plan")
+    public SubscriptionResponseDTO changePlan(
+            @PathVariable Long id,
+            @RequestParam Long newPlanId) {
+
+        return subscriptionService.changePlan(id, newPlanId);
     }
 }

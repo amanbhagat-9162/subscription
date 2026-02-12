@@ -171,6 +171,52 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         }
     }
 
+    @Override
+    public SubscriptionResponseDTO changePlan(Long subscriptionId, Long newPlanId) {
+
+        Subscription subscription = subscriptionRepository.findById(subscriptionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Subscription not found"));
+
+        if (subscription.getStatus() != SubscriptionStatus.ACTIVE) {
+            throw new RuntimeException("Only active subscriptions can change plan");
+        }
+
+        Plan oldPlan = subscription.getPlan();
+        Plan newPlan = planRepository.findById(newPlanId)
+                .orElseThrow(() -> new ResourceNotFoundException("New plan not found"));
+
+        long remainingDays = java.time.temporal.ChronoUnit.DAYS
+                .between(LocalDate.now(), subscription.getEndDate());
+
+        if (remainingDays < 0) remainingDays = 0;
+
+        double oldDaily = oldPlan.getPrice() / oldPlan.getDurationDays();
+        double remainingCredit = remainingDays * oldDaily;
+
+        double finalAmount = newPlan.getPrice() - remainingCredit;
+
+        Payment payment = new Payment();
+        payment.setSubscription(subscription);
+        payment.setAmount(Math.max(finalAmount, 0));
+        payment.setPaymentMethod("UPGRADE");
+        payment.setPaymentStatus(PaymentStatus.SUCCESS);
+        payment.setTransactionId("UPG" + System.currentTimeMillis());
+        payment.setPaymentDate(LocalDateTime.now());
+
+        paymentRepository.save(payment);
+
+        subscription.setPlan(newPlan);
+        subscription.setStartDate(LocalDate.now());
+        subscription.setEndDate(LocalDate.now()
+                .plusDays(newPlan.getDurationDays()));
+
+        subscriptionRepository.save(subscription);
+
+        return convertToDTO(subscription);
+    }
+
+
+
     // ================= DTO CONVERTER =================
 
     private SubscriptionResponseDTO convertToDTO(Subscription sub) {

@@ -12,5 +12,7 @@ public interface SubscriptionService {
     List<SubscriptionResponseDTO> getAllSubscriptions();
 
     SubscriptionResponseDTO cancelSubscription(Long id);
+    SubscriptionResponseDTO changePlan(Long subscriptionId, Long newPlanId);
+
 
 }
