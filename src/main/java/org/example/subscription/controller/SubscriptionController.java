@@ -19,9 +19,10 @@ public class SubscriptionController {
     @PostMapping
     public SubscriptionResponseDTO createSubscription(
             @RequestParam Long userId,
-            @RequestParam Long planId) {
+            @RequestParam Long planId,
+            @RequestParam(required = false) String couponCode) {
 
-        return subscriptionService.createSubscription(userId, planId);
+        return subscriptionService.createSubscription(userId, planId,couponCode);
     }
 
     @GetMapping
