@@ -23,4 +23,5 @@ public class UserController {
     public Object getAllUsers() {
         return userRepository.findAll();
     }
+
 }

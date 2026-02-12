@@ -30,5 +30,7 @@ public class Subscription {
 
     @Enumerated(EnumType.STRING)
     private SubscriptionStatus status;
-    private Boolean addRenew = true;
+//    private Boolean addRenew = true;
+    private Boolean autoRenew = true;
+
 }

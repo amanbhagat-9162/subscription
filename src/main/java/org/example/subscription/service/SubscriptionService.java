@@ -10,4 +10,5 @@ public interface SubscriptionService {
     List<SubscriptionResponseDTO> getAllSubscriptions();
 
     SubscriptionResponseDTO cancelSubscription(Long id);
+
 }
