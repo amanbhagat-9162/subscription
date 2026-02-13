@@ -2,6 +2,7 @@ package org.example.subscription.service.impl;
 
 import org.example.subscription.dto.SubscriptionResponseDTO;
 import org.example.subscription.entity.*;
+import org.example.subscription.enums.CouponType;
 import org.example.subscription.enums.PaymentStatus;
 import org.example.subscription.enums.SubscriptionStatus;
 import org.example.subscription.exception.ResourceNotFoundException;
@@ -10,9 +11,10 @@ import org.example.subscription.service.SubscriptionService;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDate;
-import java.time.LocalDateTime;
+import java.util.Date;
+import java.util.Calendar;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -23,19 +25,22 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     private final PlanRepository planRepository;
     private final PaymentRepository paymentRepository;
     private final CouponRepository couponRepository;
+    private final CouponUsageRepository couponUsageRepository;
+
 
     public SubscriptionServiceImpl(
             SubscriptionRepository subscriptionRepository,
             UserRepository userRepository,
             PlanRepository planRepository,
             PaymentRepository paymentRepository,
-            CouponRepository couponRepository) {
+            CouponRepository couponRepository, CouponUsageRepository couponUsageRepository) {
 
         this.subscriptionRepository = subscriptionRepository;
         this.userRepository = userRepository;
         this.planRepository = planRepository;
         this.paymentRepository = paymentRepository;
         this.couponRepository = couponRepository;
+        this.couponUsageRepository = couponUsageRepository;
     }
 
     // ================= CREATE SUBSCRIPTION =================
@@ -52,10 +57,16 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                 .orElseThrow(() -> new ResourceNotFoundException("Plan not found"));
 
         Subscription subscription = new Subscription();
-        subscription.setUser(user);
-        subscription.setPlan(plan);
-        subscription.setStartDate(LocalDate.now());
-        subscription.setEndDate(LocalDate.now().plusDays(plan.getDurationDays()));
+        subscription.setUserId(user.getId());
+        subscription.setPlanId(plan.getId());
+
+        Date now = new Date();
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(now);
+        calendar.add(Calendar.DAY_OF_MONTH, plan.getDurationDays());
+
+        subscription.setStartDate(now);
+        subscription.setEndDate(calendar.getTime());
         subscription.setStatus(SubscriptionStatus.PENDING);
         subscription.setAutoRenew(true);
 
@@ -70,31 +81,82 @@ public class SubscriptionServiceImpl implements SubscriptionService {
             if (!coupon.getActive())
                 throw new RuntimeException("Coupon inactive");
 
-            if (coupon.getExpiryDate().isBefore(LocalDate.now()))
+            if (coupon.getExpiryDate().before(new Date()))
                 throw new RuntimeException("Coupon expired");
 
             if (coupon.getUsedCount() >= coupon.getUsageLimit())
                 throw new RuntimeException("Coupon usage exceeded");
 
-            if (coupon.getDiscountPercentage() != null) {
-                finalPrice -= (finalPrice * coupon.getDiscountPercentage() / 100);
+            // ===== PER USER CHECK =====
+            Optional<CouponUsage> usageOpt =
+                    couponUsageRepository.findByUserIdAndCouponId(user.getId(), coupon.getId());
+
+            CouponUsage usage;
+
+            if (usageOpt.isPresent()) {
+
+                usage = usageOpt.get();
+
+                if (usage.getUsageCount() >= 1) {
+                    throw new RuntimeException("User already used this coupon");
+                }
+
+                usage.setUsageCount(usage.getUsageCount() + 1);
+
+            } else {
+
+                usage = new CouponUsage();
+                usage.setUserId(user.getId());
+                usage.setCouponId(coupon.getId());
+                usage.setUsageCount(1);
             }
 
-            if (coupon.getDiscountAmount() != null) {
-                finalPrice -= coupon.getDiscountAmount();
-            }
+            couponUsageRepository.save(usage);
 
+            // ===== GLOBAL COUNT UPDATE =====
             coupon.setUsedCount(coupon.getUsedCount() + 1);
             couponRepository.save(coupon);
 
-            subscription.setCoupon(coupon);
-        }
+            // ===== APPLY DISCOUNT BASED ON TYPE =====
+            CouponType type = coupon.getType() == null ? CouponType.PERCENTAGE : coupon.getType();
 
+            switch (type) {
+                case PERCENTAGE:
+                    if (coupon.getDiscountPercentage() != null) {
+                        finalPrice -= (finalPrice * coupon.getDiscountPercentage() / 100);
+                    }
+                    break;
+                case AMOUNT:
+                    if (coupon.getDiscountAmount() != null) {
+                        finalPrice -= coupon.getDiscountAmount();
+                    }
+                    break;
+                case BOTH:
+                    if (coupon.getDiscountPercentage() != null) {
+                        finalPrice -= (finalPrice * coupon.getDiscountPercentage() / 100);
+                    }
+                    if (coupon.getDiscountAmount() != null) {
+                        finalPrice -= coupon.getDiscountAmount();
+                    }
+                    break;
+                case FREE_TRIAL:
+                    finalPrice = 0.0;
+                    break;
+                default:
+                    break;
+            }
+
+            if (finalPrice < 0) finalPrice = 0;
+
+            subscription.setCouponId(coupon.getId());
+        }
         subscription.setFinalPrice(finalPrice);
 
         Subscription saved = subscriptionRepository.save(subscription);
+
         return convertToDTO(saved);
     }
+
 
     // ================= GET ALL =================
 
@@ -115,9 +177,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                 .orElseThrow(() -> new ResourceNotFoundException("Subscription not found"));
 
         subscription.setStatus(SubscriptionStatus.CANCELLED);
-
-        Subscription updated = subscriptionRepository.save(subscription);
-        return convertToDTO(updated);
+        return convertToDTO(subscriptionRepository.save(subscription));
     }
 
     // ================= SCHEDULER =================
@@ -125,51 +185,19 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     @Scheduled(fixedRate = 10000)
     public void handleSubscriptions() {
 
-        // ACTIVE → GRACE
         List<Subscription> activeSubs =
                 subscriptionRepository.findByStatus(SubscriptionStatus.ACTIVE);
 
         for (Subscription sub : activeSubs) {
 
-            if (sub.getEndDate().isBefore(LocalDate.now())) {
+            if (sub.getEndDate().before(new Date())) {
                 sub.setStatus(SubscriptionStatus.GRACE);
                 subscriptionRepository.save(sub);
             }
         }
-
-        // GRACE → ACTIVE or EXPIRED
-        List<Subscription> graceSubs =
-                subscriptionRepository.findByStatus(SubscriptionStatus.GRACE);
-
-        for (Subscription sub : graceSubs) {
-
-            if (sub.getEndDate().plusDays(3).isBefore(LocalDate.now())) {
-
-                if (Boolean.TRUE.equals(sub.getAutoRenew())) {
-
-                    Payment payment = new Payment();
-                    payment.setSubscription(sub);
-                    payment.setAmount(sub.getPlan().getPrice());
-                    payment.setPaymentMethod("AUTO");
-                    payment.setPaymentStatus(PaymentStatus.SUCCESS);
-                    payment.setTransactionId("AUTO" + System.currentTimeMillis());
-                    payment.setPaymentDate(LocalDateTime.now());
-
-                    paymentRepository.save(payment);
-
-                    sub.setStartDate(LocalDate.now());
-                    sub.setEndDate(LocalDate.now()
-                            .plusDays(sub.getPlan().getDurationDays()));
-                    sub.setStatus(SubscriptionStatus.ACTIVE);
-
-                } else {
-                    sub.setStatus(SubscriptionStatus.EXPIRED);
-                }
-
-                subscriptionRepository.save(sub);
-            }
-        }
     }
+
+    // ================= CHANGE PLAN =================
 
     @Override
     public SubscriptionResponseDTO changePlan(Long subscriptionId, Long newPlanId) {
@@ -181,13 +209,13 @@ public class SubscriptionServiceImpl implements SubscriptionService {
             throw new RuntimeException("Only active subscriptions can change plan");
         }
 
-        Plan oldPlan = subscription.getPlan();
+        Plan oldPlan = planRepository.findById(subscription.getPlanId())
+                .orElseThrow(() -> new ResourceNotFoundException("Old plan not found"));
         Plan newPlan = planRepository.findById(newPlanId)
                 .orElseThrow(() -> new ResourceNotFoundException("New plan not found"));
 
-        long remainingDays = java.time.temporal.ChronoUnit.DAYS
-                .between(LocalDate.now(), subscription.getEndDate());
-
+        long diff = subscription.getEndDate().getTime() - new Date().getTime();
+        long remainingDays = diff / (1000 * 60 * 60 * 24);
         if (remainingDays < 0) remainingDays = 0;
 
         double oldDaily = oldPlan.getPrice() / oldPlan.getDurationDays();
@@ -196,34 +224,40 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         double finalAmount = newPlan.getPrice() - remainingCredit;
 
         Payment payment = new Payment();
-        payment.setSubscription(subscription);
+        payment.setSubscriptionId(subscription.getId());
         payment.setAmount(Math.max(finalAmount, 0));
         payment.setPaymentMethod("UPGRADE");
         payment.setPaymentStatus(PaymentStatus.SUCCESS);
         payment.setTransactionId("UPG" + System.currentTimeMillis());
-        payment.setPaymentDate(LocalDateTime.now());
+        payment.setPaymentDate(new Date());
 
         paymentRepository.save(payment);
 
-        subscription.setPlan(newPlan);
-        subscription.setStartDate(LocalDate.now());
-        subscription.setEndDate(LocalDate.now()
-                .plusDays(newPlan.getDurationDays()));
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(new Date());
+        calendar.add(Calendar.DAY_OF_MONTH, newPlan.getDurationDays());
+
+        subscription.setPlanId(newPlan.getId());
+        subscription.setStartDate(new Date());
+        subscription.setEndDate(calendar.getTime());
 
         subscriptionRepository.save(subscription);
 
         return convertToDTO(subscription);
     }
 
-
-
     // ================= DTO CONVERTER =================
 
     private SubscriptionResponseDTO convertToDTO(Subscription sub) {
+        User user = userRepository.findById(sub.getUserId()).orElse(null);
+        Plan plan = planRepository.findById(sub.getPlanId()).orElse(null);
+
         return new SubscriptionResponseDTO(
                 sub.getId(),
-                sub.getUser().getName(),
-                sub.getPlan().getName(),
+//                sub.getUser().getName(),
+//                sub.getPlan().getName(),
+                user != null ? user.getName() : null,
+                plan != null ? plan.getName() : null,
                 sub.getStartDate(),
                 sub.getEndDate(),
                 sub.getStatus().name()

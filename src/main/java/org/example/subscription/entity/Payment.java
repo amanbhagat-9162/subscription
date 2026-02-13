@@ -2,7 +2,11 @@ package org.example.subscription.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
-import java.time.LocalDateTime;
+//import java.time.LocalDateTime;
+import java.util.Date;
+import jakarta.persistence.Temporal;
+import jakarta.persistence.TemporalType;
+
 import org.example.subscription.enums.PaymentStatus;
 
 @Entity
@@ -15,8 +19,9 @@ public class Payment {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne
-    private Subscription subscription;
+//    @ManyToOne
+//    private Subscription subscription;
+    private Long subscriptionId;
 
     private Double amount;
 
@@ -27,9 +32,16 @@ public class Payment {
 
     private String transactionId;
 
-    private LocalDateTime paymentDate;
+//    private LocalDateTime paymentDate;
+@Temporal(TemporalType.TIMESTAMP)
+private Date paymentDate;
+
     private Double refundAmount;
+
     private String refundReason;
-    private LocalDateTime refundDate;
+    @Temporal(TemporalType.TIMESTAMP)
+    private Date refundDate;
 
 }
+
+// in refund payent kitna aya or kitna gaya wo bhi hona chaiye

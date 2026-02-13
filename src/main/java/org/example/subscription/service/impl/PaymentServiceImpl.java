@@ -6,7 +6,8 @@ import org.example.subscription.repository.*;
 import org.example.subscription.service.PaymentService;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
+//import java.time.LocalDateTime;
+import java.util.Date;
 
 @Service
 public class PaymentServiceImpl implements PaymentService {
@@ -27,12 +28,12 @@ public class PaymentServiceImpl implements PaymentService {
                 .orElseThrow(() -> new RuntimeException("Subscription not found"));
 
         Payment payment = new Payment();
-        payment.setSubscription(subscription);
+        payment.setSubscriptionId(subscription.getId());
         payment.setAmount(amount);
         payment.setPaymentMethod(method);
         payment.setPaymentStatus(PaymentStatus.SUCCESS);
         payment.setTransactionId("TXN" + System.currentTimeMillis());
-        payment.setPaymentDate(LocalDateTime.now());
+        payment.setPaymentDate(new Date());
 
         subscription.setStatus(SubscriptionStatus.ACTIVE);
         subscriptionRepository.save(subscription);
@@ -52,9 +53,10 @@ public class PaymentServiceImpl implements PaymentService {
         payment.setPaymentStatus(PaymentStatus.REFUNDED);
         payment.setRefundAmount(payment.getAmount());
         payment.setRefundReason(reason);
-        payment.setRefundDate(LocalDateTime.now());
+        payment.setRefundDate(new Date());
 
-        Subscription subscription = payment.getSubscription();
+        Subscription subscription = subscriptionRepository.findById(payment.getSubscriptionId())
+                .orElseThrow(() -> new RuntimeException("Subscription not found for payment"));
         subscription.setStatus(SubscriptionStatus.CANCELLED);
         subscriptionRepository.save(subscription);
 

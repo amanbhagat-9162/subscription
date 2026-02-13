@@ -22,3 +22,5 @@ public class Plan {
 
     private String description;
 }
+
+//plan ka bhi enum bana sakta hu
