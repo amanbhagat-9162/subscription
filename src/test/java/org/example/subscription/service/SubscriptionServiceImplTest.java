@@ -1,0 +1,653 @@
+package org.example.subscription.service;
+
+import org.example.subscription.dto.SubscriptionResponseDTO;
+import org.example.subscription.entity.*;
+import org.example.subscription.enums.SubscriptionStatus;
+import org.example.subscription.exception.ResourceNotFoundException;
+import org.example.subscription.repository.*;
+import org.example.subscription.service.impl.SubscriptionServiceImpl;
+//import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.*;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.example.subscription.enums.SubscriptionStatus;
+
+
+import java.util.Calendar;
+import java.util.Date;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+class SubscriptionServiceImplTest {
+
+    @Mock
+    private SubscriptionRepository subscriptionRepository;
+
+    @Mock
+    private UserRepository userRepository;
+
+    @Mock
+    private PlanRepository planRepository;
+
+    @Mock
+    private PaymentRepository paymentRepository;
+
+    @Mock
+    private CouponRepository couponRepository;
+
+    @Mock
+    private CouponUsageRepository couponUsageRepository;
+
+    @InjectMocks
+    private SubscriptionServiceImpl subscriptionService;
+
+
+//    @BeforeEach
+//    void setUp() {
+//        MockitoAnnotations.openMocks(this);
+//    }
+
+    @Test
+    void createSubscription_success() {
+
+        // 1️⃣ Arrange (Given)
+
+        Long userId = 1L;
+        Long planId = 10L;
+        User user = new User();
+        user.setId(1L);
+        user.setName("Aman");
+
+        Plan plan = new Plan();
+        plan.setId(planId);
+        plan.setName("Basic");
+        plan.setPrice(1000.0);
+        plan.setDurationDays(30);
+
+        when(userRepository.findById(userId))
+                .thenReturn(Optional.of(user));
+
+        when(planRepository.findById(planId))
+                .thenReturn(Optional.of(plan));
+
+        when(subscriptionRepository.save(any(Subscription.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        // 2️⃣ Act (When)
+
+        SubscriptionResponseDTO response =
+                subscriptionService.createSubscription(userId, planId, null);
+
+        // 3️⃣ Assert (Then)
+
+        assertNotNull(response);
+        assertEquals("Aman", response.getUserName());
+        assertEquals("Basic", response.getPlanName());
+        assertEquals("PENDING", response.getStatus());
+
+        verify(subscriptionRepository, times(1))
+                .save(any(Subscription.class));
+    }
+    @Test
+    void createSubscription_invalidUser() {
+
+        // 1️⃣ Arrange (Given)
+
+        Long userId = 99L;
+        Long planId = 1L;
+
+        when(userRepository.findById(userId))
+                .thenReturn(Optional.empty());
+
+        // 2️⃣ Act + Assert (When + Then)
+
+        ResourceNotFoundException exception =
+                assertThrows(ResourceNotFoundException.class, () ->
+                        subscriptionService.createSubscription(userId, planId, null)
+                );
+
+        assertEquals("User not found", exception.getMessage());
+
+        // 3️⃣ Verify repository not called further
+        verify(subscriptionRepository, never()).save(any());
+    }
+
+    @Test
+    void createSubscription_invalidPlan() {
+
+        // 1️⃣ Arrange (Given)
+
+        Long userId = 1L;
+        Long planId = 999L;
+
+        User user = new User();
+        user.setId(userId);
+        user.setName("Aman");
+
+        // User mil gaya
+        when(userRepository.findById(userId))
+                .thenReturn(Optional.of(user));
+
+        // Plan nahi mila
+        when(planRepository.findById(planId))
+                .thenReturn(Optional.empty());
+
+        // 2️⃣ Act + Assert
+
+        ResourceNotFoundException exception =
+                assertThrows(ResourceNotFoundException.class, () ->
+                        subscriptionService.createSubscription(userId, planId, null)
+                );
+
+        assertEquals("Plan not found", exception.getMessage());
+
+        // 3️⃣ Verify subscription save nahi hua
+        verify(subscriptionRepository, never()).save(any());
+    }
+
+    @Test
+    void cancelSubscription_success() {
+
+        // 1️⃣ Arrange
+
+        Long subscriptionId = 1L;
+
+        Subscription subscription = new Subscription();
+        subscription.setId(subscriptionId);
+        subscription.setUserId(1L);
+        subscription.setPlanId(10L);
+        subscription.setStatus(SubscriptionStatus.ACTIVE);
+
+        when(subscriptionRepository.findById(subscriptionId))
+                .thenReturn(Optional.of(subscription));
+
+        when(subscriptionRepository.save(any(Subscription.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        // 2️⃣ Act
+
+        SubscriptionResponseDTO response =
+                subscriptionService.cancelSubscription(subscriptionId);
+
+        // 3️⃣ Assert
+
+        assertNotNull(response);
+        assertEquals("CANCELLED", response.getStatus());
+
+        verify(subscriptionRepository, times(1))
+                .save(subscription);
+    }
+    @Test
+    void changePlan_subscriptionNotFound() {
+
+        when(subscriptionRepository.findById(1L))
+                .thenReturn(Optional.empty());
+
+        RuntimeException exception = assertThrows(
+                RuntimeException.class,
+                () -> subscriptionService.changePlan(1L, 2L)
+        );
+
+        assertEquals("Subscription not found", exception.getMessage());
+    }
+    @Test
+    void changePlan_notActive() {
+
+        Subscription subscription = new Subscription();
+        subscription.setId(1L);
+        subscription.setStatus(SubscriptionStatus.CANCELLED);
+
+        when(subscriptionRepository.findById(1L))
+                .thenReturn(Optional.of(subscription));
+
+        assertThrows(RuntimeException.class,
+                () -> subscriptionService.changePlan(1L, 20L));
+    }
+    @Test
+    void changePlan_oldPlanNotFound() {
+
+        Subscription subscription = new Subscription();
+        subscription.setId(1L);
+        subscription.setPlanId(10L);
+        subscription.setStatus(SubscriptionStatus.ACTIVE);
+        subscription.setEndDate(new Date());
+
+        when(subscriptionRepository.findById(1L))
+                .thenReturn(Optional.of(subscription));
+
+        when(planRepository.findById(10L))
+                .thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> subscriptionService.changePlan(1L, 20L));
+    }
+    @Test
+    void changePlan_newPlanNotFound() {
+
+        Subscription subscription = new Subscription();
+        subscription.setId(1L);
+        subscription.setPlanId(10L);
+        subscription.setStatus(SubscriptionStatus.ACTIVE);
+        subscription.setEndDate(new Date());
+
+        Plan oldPlan = new Plan();
+        oldPlan.setId(10L);
+        oldPlan.setPrice(1000.0);
+        oldPlan.setDurationDays(30);
+
+        when(subscriptionRepository.findById(1L))
+                .thenReturn(Optional.of(subscription));
+
+        when(planRepository.findById(10L))
+                .thenReturn(Optional.of(oldPlan));
+
+        when(planRepository.findById(20L))
+                .thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> subscriptionService.changePlan(1L, 20L));
+    }
+
+
+
+
+    @Test
+    void changePlan_success() {
+
+        // 1️⃣ Arrange
+
+        Long subscriptionId = 1L;
+        Long oldPlanId = 10L;
+        Long newPlanId = 20L;
+
+        Subscription subscription = new Subscription();
+        subscription.setId(subscriptionId);
+        subscription.setUserId(1L);
+        subscription.setPlanId(oldPlanId);
+        subscription.setStatus(SubscriptionStatus.ACTIVE);
+        subscription.setStartDate(new Date());
+
+        Calendar cal = Calendar.getInstance();
+        cal.add(Calendar.DAY_OF_MONTH, 10);
+        subscription.setEndDate(cal.getTime());
+
+        Plan oldPlan = new Plan();
+        oldPlan.setId(oldPlanId);
+        oldPlan.setPrice(1000.0);
+        oldPlan.setDurationDays(30);
+
+        Plan newPlan = new Plan();
+        newPlan.setId(newPlanId);
+        newPlan.setPrice(2000.0);
+        newPlan.setDurationDays(30);
+
+        when(subscriptionRepository.findById(subscriptionId))
+                .thenReturn(Optional.of(subscription));
+        when(planRepository.findById(oldPlanId))
+                .thenReturn(Optional.of(oldPlan));
+
+
+        when(planRepository.findById(newPlanId))
+                .thenReturn(Optional.of(newPlan));
+
+        when(subscriptionRepository.save(any(Subscription.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        when(paymentRepository.save(any(Payment.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        // 2️⃣ Act
+
+        SubscriptionResponseDTO response =
+                subscriptionService.changePlan(subscriptionId, newPlanId);
+
+        // 3️⃣ Assert
+
+        assertNotNull(response);
+        assertEquals(newPlanId, subscription.getPlanId());
+        assertEquals("ACTIVE", response.getStatus());
+
+        verify(paymentRepository, times(1))
+                .save(any(Payment.class));
+
+        verify(subscriptionRepository, times(1))
+                .save(subscription);
+    }
+
+
+    @Test
+    void cancelSubscription_notFound() {
+
+        Long subscriptionId = 100L;
+
+        when(subscriptionRepository.findById(subscriptionId))
+                .thenReturn(Optional.empty());
+
+        ResourceNotFoundException exception =
+                assertThrows(ResourceNotFoundException.class,
+                        () -> subscriptionService.cancelSubscription(subscriptionId));
+
+        assertEquals("Subscription not found", exception.getMessage());
+    }
+
+
+    @Test
+    void createSubscription_withValidCoupon_success() {
+
+        Long userId = 1L;
+        Long planId = 10L;
+
+        User user = new User();
+        user.setId(userId);
+        user.setName("Aman");
+
+        Plan plan = new Plan();
+        plan.setId(planId);
+        plan.setName("Pro");
+        plan.setPrice(1000.0);
+        plan.setDurationDays(30);
+
+        Coupon coupon = new Coupon();
+        coupon.setId(100L);
+        coupon.setCode("NEW10");
+        coupon.setActive(true);
+        coupon.setUsageLimit(5);
+        coupon.setUsedCount(0);
+        coupon.setDiscountPercentage(10.0);
+        coupon.setExpiryDate(new Date(System.currentTimeMillis() + 1000000));
+
+        when(userRepository.findById(userId))
+                .thenReturn(Optional.of(user));
+
+        when(planRepository.findById(planId))
+                .thenReturn(Optional.of(plan));
+
+        when(couponRepository.findByCode("NEW10"))
+                .thenReturn(Optional.of(coupon));
+
+        when(couponUsageRepository.findByUserIdAndCouponId(userId, 100L))
+                .thenReturn(Optional.empty());
+
+        when(subscriptionRepository.save(any(Subscription.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        when(couponUsageRepository.save(any(CouponUsage.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        when(couponRepository.save(any(Coupon.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        SubscriptionResponseDTO response =
+                subscriptionService.createSubscription(userId, planId, "NEW10");
+
+        assertNotNull(response);
+        assertEquals("Pro", response.getPlanName());
+        assertEquals("Aman", response.getUserName());
+
+        verify(couponUsageRepository, times(1))
+                .save(any(CouponUsage.class));
+
+        verify(couponRepository, times(1))
+                .save(coupon);
+    }
+    @Test
+    void createSubscription_couponAlreadyUsed_shouldThrowException() {
+
+        Long userId = 1L;
+        Long planId = 10L;
+
+        User user = new User();
+        user.setId(userId);
+
+        Plan plan = new Plan();
+        plan.setId(planId);
+        plan.setPrice(1000.0);
+        plan.setDurationDays(30);
+
+        Coupon coupon = new Coupon();
+        coupon.setId(100L);
+        coupon.setCode("NEW10");
+        coupon.setActive(true);
+        coupon.setUsageLimit(5);
+        coupon.setUsedCount(1);
+        coupon.setExpiryDate(new Date(System.currentTimeMillis() + 1000000));
+
+        CouponUsage usage = new CouponUsage();
+        usage.setUserId(userId);
+        usage.setCouponId(100L);
+        usage.setUsageCount(1); // already used
+
+        when(userRepository.findById(userId))
+                .thenReturn(Optional.of(user));
+
+        when(planRepository.findById(planId))
+                .thenReturn(Optional.of(plan));
+
+        when(couponRepository.findByCode("NEW10"))
+                .thenReturn(Optional.of(coupon));
+
+        when(couponUsageRepository.findByUserIdAndCouponId(userId, 100L))
+                .thenReturn(Optional.of(usage));
+
+        RuntimeException exception = assertThrows(
+                RuntimeException.class,
+                () -> subscriptionService.createSubscription(userId, planId, "NEW10")
+        );
+
+        assertEquals("User already used this coupon", exception.getMessage());
+    }
+
+    @Test
+    void createSubscription_couponExpired_shouldThrowException() {
+
+        Long userId = 1L;
+        Long planId = 10L;
+
+        // --------- Arrange ---------
+
+        User user = new User();
+        user.setId(userId);
+
+        Plan plan = new Plan();
+        plan.setId(planId);
+        plan.setPrice(1000.0);
+        plan.setDurationDays(30);
+
+        Coupon coupon = new Coupon();
+        coupon.setId(100L);
+        coupon.setCode("NEW10");
+        coupon.setActive(true);
+        coupon.setUsageLimit(5);
+        coupon.setUsedCount(0);
+
+        // 👇 Expiry date past me set kar rahe hain
+        coupon.setExpiryDate(new Date(System.currentTimeMillis() - 100000));
+
+        when(userRepository.findById(userId))
+                .thenReturn(Optional.of(user));
+
+        when(planRepository.findById(planId))
+                .thenReturn(Optional.of(plan));
+
+        when(couponRepository.findByCode("NEW10"))
+                .thenReturn(Optional.of(coupon));
+
+        // --------- Act + Assert ---------
+
+        RuntimeException exception = assertThrows(
+                RuntimeException.class,
+                () -> subscriptionService.createSubscription(userId, planId, "NEW10")
+        );
+
+        assertEquals("Coupon expired", exception.getMessage());
+
+        // 👇 Verify nothing saved
+        verify(subscriptionRepository, never()).save(any());
+        verify(couponUsageRepository, never()).save(any());
+    }
+
+    @Test
+    void createSubscription_couponInactive_shouldThrowException() {
+
+        Long userId = 1L;
+        Long planId = 10L;
+
+        // -------- Arrange --------
+
+        User user = new User();
+        user.setId(userId);
+
+        Plan plan = new Plan();
+        plan.setId(planId);
+        plan.setPrice(1000.0);
+        plan.setDurationDays(30);
+
+        Coupon coupon = new Coupon();
+        coupon.setId(100L);
+        coupon.setCode("NEW10");
+        coupon.setActive(false);   // 👈 Inactive coupon
+        coupon.setUsageLimit(5);
+        coupon.setUsedCount(0);
+        coupon.setExpiryDate(new Date(System.currentTimeMillis() + 100000)); // future date
+
+        when(userRepository.findById(userId))
+                .thenReturn(Optional.of(user));
+
+        when(planRepository.findById(planId))
+                .thenReturn(Optional.of(plan));
+
+        when(couponRepository.findByCode("NEW10"))
+                .thenReturn(Optional.of(coupon));
+
+        // -------- Act + Assert --------
+
+        RuntimeException exception = assertThrows(
+                RuntimeException.class,
+                () -> subscriptionService.createSubscription(userId, planId, "NEW10")
+        );
+
+        assertEquals("Coupon inactive", exception.getMessage());
+
+        // 👇 Verify nothing saved
+        verify(subscriptionRepository, never()).save(any());
+        verify(couponUsageRepository, never()).save(any());
+    }
+
+    @Test
+    void createSubscription_couponUsageLimitExceeded_shouldThrowException() {
+
+        Long userId = 1L;
+        Long planId = 10L;
+
+        // -------- Arrange --------
+
+        User user = new User();
+        user.setId(userId);
+
+        Plan plan = new Plan();
+        plan.setId(planId);
+        plan.setPrice(1000.0);
+        plan.setDurationDays(30);
+
+        Coupon coupon = new Coupon();
+        coupon.setId(100L);
+        coupon.setCode("NEW10");
+        coupon.setActive(true);
+        coupon.setUsageLimit(5);
+        coupon.setUsedCount(5);   // Limit reached
+        coupon.setExpiryDate(new Date(System.currentTimeMillis() + 100000)); // future date
+
+        when(userRepository.findById(userId))
+                .thenReturn(Optional.of(user));
+
+        when(planRepository.findById(planId))
+                .thenReturn(Optional.of(plan));
+
+        when(couponRepository.findByCode("NEW10"))
+                .thenReturn(Optional.of(coupon));
+
+        // -------- Act + Assert --------
+
+        RuntimeException exception = assertThrows(
+                RuntimeException.class,
+                () -> subscriptionService.createSubscription(userId, planId, "NEW10")
+        );
+
+        assertEquals("Coupon usage exceeded", exception.getMessage());
+
+        // 👇 Verify nothing saved
+        verify(subscriptionRepository, never()).save(any());
+        verify(couponUsageRepository, never()).save(any());
+    }
+
+    @Test
+    void createSubscription_withCoupon_success() {
+
+        Long userId = 1L;
+        Long planId = 10L;
+
+        // ---------- Arrange ----------
+
+        User user = new User();
+        user.setId(userId);
+        user.setName("Aman");
+
+        Plan plan = new Plan();
+        plan.setId(planId);
+        plan.setName("Basic");
+        plan.setPrice(1000.0);
+        plan.setDurationDays(30);
+
+        Coupon coupon = new Coupon();
+        coupon.setId(100L);
+        coupon.setCode("NEW10");
+        coupon.setActive(true);
+        coupon.setUsageLimit(5);
+        coupon.setUsedCount(1);
+        coupon.setDiscountPercentage(10.0); // 👈 10% discount
+        coupon.setExpiryDate(new Date(System.currentTimeMillis() + 100000));
+
+        when(userRepository.findById(userId))
+                .thenReturn(Optional.of(user));
+
+        when(planRepository.findById(planId))
+                .thenReturn(Optional.of(plan));
+
+        when(couponRepository.findByCode("NEW10"))
+                .thenReturn(Optional.of(coupon));
+
+        when(couponUsageRepository.findByUserIdAndCouponId(userId, 100L))
+                .thenReturn(Optional.empty());
+
+        when(subscriptionRepository.save(any(Subscription.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        when(couponUsageRepository.save(any(CouponUsage.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        when(couponRepository.save(any(Coupon.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        // ---------- Act ----------
+
+        SubscriptionResponseDTO response =
+                subscriptionService.createSubscription(userId, planId, "NEW10");
+
+        // ---------- Assert ----------
+
+        assertNotNull(response);
+        assertEquals("Aman", response.getUserName());
+        assertEquals("Basic", response.getPlanName());
+        assertEquals("PENDING", response.getStatus());
+
+        // 1000 ka 10% discount = 900
+        verify(subscriptionRepository, times(1)).save(any(Subscription.class));
+        verify(couponUsageRepository, times(1)).save(any(CouponUsage.class));
+        verify(couponRepository, times(1)).save(any(Coupon.class));
+    }
+
+}

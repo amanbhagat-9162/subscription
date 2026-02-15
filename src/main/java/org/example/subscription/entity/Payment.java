@@ -43,5 +43,3 @@ private Date paymentDate;
     private Date refundDate;
 
 }
-
-// in refund payent kitna aya or kitna gaya wo bhi hona chaiye

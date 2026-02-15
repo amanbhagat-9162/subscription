@@ -11,5 +11,3 @@ class SubscriptionApplicationTests {
     }
 
 }
-//sql connection,
-//test likho sabka

@@ -7,7 +7,7 @@ import jakarta.persistence.Temporal;
 import jakarta.persistence.TemporalType;
 
 
-import java.time.LocalDate;
+//import java.time.LocalDate;
 import org.example.subscription.enums.CouponType;
 
 @Entity
@@ -42,8 +42,3 @@ public class Coupon {
 
 }
 
-// yre add krna hai coupon bahut type missing hai kon sa type kon se coupon se kya hoga like kitna discount hoga
-//coupn multiple type ho sakte hai ek coupon ek hi liye valid nhi ho skate hai nn to ye dekhna hai
-//sql se connect krna hai
-// test likhna hai
-//make a builder class ki user ko jitna  response chaiye utna hi le ske wo

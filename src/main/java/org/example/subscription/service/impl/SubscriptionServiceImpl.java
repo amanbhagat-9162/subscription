@@ -8,7 +8,7 @@ import org.example.subscription.enums.SubscriptionStatus;
 import org.example.subscription.exception.ResourceNotFoundException;
 import org.example.subscription.repository.*;
 import org.example.subscription.service.SubscriptionService;
-import org.springframework.scheduling.annotation.Scheduled;
+//import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.util.Date;
@@ -180,22 +180,22 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         return convertToDTO(subscriptionRepository.save(subscription));
     }
 
-    // ================= SCHEDULER =================
-
-    @Scheduled(fixedRate = 10000)
-    public void handleSubscriptions() {
-
-        List<Subscription> activeSubs =
-                subscriptionRepository.findByStatus(SubscriptionStatus.ACTIVE);
-
-        for (Subscription sub : activeSubs) {
-
-            if (sub.getEndDate().before(new Date())) {
-                sub.setStatus(SubscriptionStatus.GRACE);
-                subscriptionRepository.save(sub);
-            }
-        }
-    }
+//    // ================= SCHEDULER =================
+//
+////    @Scheduled(fixedRate = 10000)
+//    public void handleSubscriptions() {
+//
+//        List<Subscription> activeSubs =
+//                subscriptionRepository.findByStatus(SubscriptionStatus.ACTIVE);
+//
+//        for (Subscription sub : activeSubs) {
+//
+//            if (sub.getEndDate().before(new Date())) {
+//                sub.setStatus(SubscriptionStatus.GRACE);
+//                subscriptionRepository.save(sub);
+//            }
+//        }
+//    }
 
     // ================= CHANGE PLAN =================
 

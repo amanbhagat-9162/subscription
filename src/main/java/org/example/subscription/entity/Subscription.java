@@ -47,8 +47,6 @@ public class Subscription {
 //    private Coupon coupon;
     private Long couponId;
 
-// foreingn id plan id coupon id hau many to one use nhinkrna hai
-    //interface padhna hai deep me
-    //coupon ka entity banana hai
+
 
 }
