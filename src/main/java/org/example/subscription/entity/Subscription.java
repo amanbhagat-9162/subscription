@@ -41,6 +41,9 @@ public class Subscription {
     private SubscriptionStatus status;
 //    private Boolean addRenew = true;
     private Boolean autoRenew = true;
+    private int renewalAttempts;
+    private int graceDays = 3;
+
     private Double finalPrice;
 //    @ManyToOne
 //    @JoinColumn(name = "coupon_id")

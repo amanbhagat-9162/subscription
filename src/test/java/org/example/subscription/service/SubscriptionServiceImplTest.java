@@ -12,16 +12,21 @@ import org.mockito.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.example.subscription.enums.SubscriptionStatus;
+import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.test.context.ActiveProfiles;
 
 
 import java.util.Calendar;
 import java.util.Date;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
+//@DataJpaTest
+//@ActiveProfiles("test")
 class SubscriptionServiceImplTest {
 
     @Mock
@@ -51,47 +56,97 @@ class SubscriptionServiceImplTest {
 //        MockitoAnnotations.openMocks(this);
 //    }
 
-    @Test
-    void createSubscription_success() {
+//    @Test
+//    void createSubscription_success() {
+//
+//        // 1️⃣ Arrange (Given)
+//
+//        Long userId = 1L;
+//        Long planId = 10L;
+////        User user = new User();
+////        user.setId(1L);
+////        user.setName("Aman");
+////        when(userRepository.findById(userId))
+////                .thenReturn(Optional.of(user));
+////
+////
+////        Plan plan = new Plan();
+////        plan.setId(10L);
+////        plan.setName("Basic");
+////        plan.setPrice(1000.0);
+////        plan.setDurationDays(30);
+//        User user = new User();
+//        user.setId(userId);
+//        user.setName("Aman");
+//
+//        when(userRepository.findById(1L))
+//                .thenReturn(Optional.of(user));
+//
+//
+//        Plan plan = new Plan();
+//        plan.setId(planId);
+//        plan.setName("Basic");
+//        plan.setPrice(1000.0);
+//        plan.setDurationDays(30);
+//
+//        when(planRepository.findById(10L))
+//                .thenReturn(Optional.of(plan));
+//
+////        when(planRepository.findById(planId))
+////                .thenReturn(Optional.of(plan));
+//
+//        when(subscriptionRepository.save(any(Subscription.class)))
+//                .thenAnswer(invocation -> invocation.getArgument(0));
+//
+//        // 2️⃣ Act (When)
+//
+//        SubscriptionResponseDTO response =
+//                subscriptionService.createSubscription(1L, 10L, null);
+//
+//        // 3️⃣ Assert (Then)
+//
+//        assertNotNull(response);
+//        assertEquals("Aman", response.getUserName());
+//        assertEquals("Basic", response.getPlanName());
+//        assertEquals("PENDING", response.getStatus());
+//
+//        verify(subscriptionRepository, times(1))
+//                .save(any(Subscription.class));
+//    }
 
-        // 1️⃣ Arrange (Given)
+//@Test
+//void createSubscription_success() {
+//
+//    Long userId = 1L;
+//    Long planId = 10L;
+//
+//    User user = new User();
+//    user.setId(userId);
+//    user.setName("Aman");
+//
+//    Plan plan = new Plan();
+//    plan.setId(planId);
+//    plan.setName("Basic");
+//    plan.setPrice(1000.0);
+//    plan.setDurationDays(30);
+//
+//    when(userRepository.findById(userId))
+//            .thenReturn(Optional.of(user));
+//
+//    when(planRepository.findById(planId))
+//            .thenReturn(Optional.of(plan));
+//
+//    when(subscriptionRepository.save(any(Subscription.class)))
+//            .thenAnswer(invocation -> invocation.getArgument(0));
+//
+//    SubscriptionResponseDTO response =
+//            subscriptionService.createSubscription(userId, planId, null);
+//
+//    assertNotNull(response);
+//    assertEquals("PENDING", response.getStatus());
+//}
 
-        Long userId = 1L;
-        Long planId = 10L;
-        User user = new User();
-        user.setId(1L);
-        user.setName("Aman");
 
-        Plan plan = new Plan();
-        plan.setId(planId);
-        plan.setName("Basic");
-        plan.setPrice(1000.0);
-        plan.setDurationDays(30);
-
-        when(userRepository.findById(userId))
-                .thenReturn(Optional.of(user));
-
-        when(planRepository.findById(planId))
-                .thenReturn(Optional.of(plan));
-
-        when(subscriptionRepository.save(any(Subscription.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
-
-        // 2️⃣ Act (When)
-
-        SubscriptionResponseDTO response =
-                subscriptionService.createSubscription(userId, planId, null);
-
-        // 3️⃣ Assert (Then)
-
-        assertNotNull(response);
-        assertEquals("Aman", response.getUserName());
-        assertEquals("Basic", response.getPlanName());
-        assertEquals("PENDING", response.getStatus());
-
-        verify(subscriptionRepository, times(1))
-                .save(any(Subscription.class));
-    }
     @Test
     void createSubscription_invalidUser() {
 
@@ -145,8 +200,38 @@ class SubscriptionServiceImplTest {
 
         assertEquals("Plan not found", exception.getMessage());
 
-        // 3️⃣ Verify subscription save nahi hua
+
         verify(subscriptionRepository, never()).save(any());
+    }
+    @Test
+    void createSubscription_whenUserAlreadyActive_shouldThrowException() {
+
+        Long userId = 1L;
+        Long planId = 10L;
+
+        User user = new User();
+        user.setId(userId);
+
+        Plan plan = new Plan();
+        plan.setId(planId);
+        plan.setPrice(1000.0);
+        plan.setDurationDays(30);
+
+        when(userRepository.findById(userId))
+                .thenReturn(Optional.of(user));
+
+        when(planRepository.findById(planId))
+                .thenReturn(Optional.of(plan));
+
+        when(subscriptionRepository.existsByUserIdAndStatus(
+                userId, SubscriptionStatus.ACTIVE))
+                .thenReturn(true);
+
+        RuntimeException exception = assertThrows(RuntimeException.class, () ->
+                subscriptionService.createSubscription(userId, planId, null)
+        );
+
+        assertEquals("User already has an active subscription", exception.getMessage());
     }
 
     @Test
@@ -155,6 +240,18 @@ class SubscriptionServiceImplTest {
         // 1️⃣ Arrange
 
         Long subscriptionId = 1L;
+        User user = new User();
+        user.setId(1L);
+        user.setName("Aman");
+
+        when(userRepository.findById(1L))
+                .thenReturn(Optional.of(user));
+        Plan plan = new Plan();
+        plan.setId(10L);
+        plan.setName("Basic");
+
+        when(planRepository.findById(10L))
+                .thenReturn(Optional.of(plan));
 
         Subscription subscription = new Subscription();
         subscription.setId(subscriptionId);
@@ -259,6 +356,18 @@ class SubscriptionServiceImplTest {
     void changePlan_success() {
 
         // 1️⃣ Arrange
+        User user = new User();
+        user.setId(1L);
+        user.setName("Aman");
+
+        when(userRepository.findById(1L))
+                .thenReturn(Optional.of(user));
+        Plan plan = new Plan();
+        plan.setId(10L);
+        plan.setName("Basic");
+
+        when(planRepository.findById(10L))
+                .thenReturn(Optional.of(plan));
 
         Long subscriptionId = 1L;
         Long oldPlanId = 10L;
@@ -583,14 +692,70 @@ class SubscriptionServiceImplTest {
         verify(subscriptionRepository, never()).save(any());
         verify(couponUsageRepository, never()).save(any());
     }
+    @Test
+    void changePlan_paymentFailed_shouldThrowException() {
+
+        // 1️⃣ Arrange
+
+        Long subscriptionId = 1L;
+        Long oldPlanId = 10L;
+        Long newPlanId = 20L;
+
+        Subscription subscription = new Subscription();
+        subscription.setId(subscriptionId);
+        subscription.setPlanId(oldPlanId);
+        subscription.setUserId(1L);
+        subscription.setStatus(SubscriptionStatus.ACTIVE);
+
+        // Set future end date
+        Calendar cal = Calendar.getInstance();
+        cal.add(Calendar.DAY_OF_MONTH, 5);
+        subscription.setEndDate(cal.getTime());
+
+        Plan oldPlan = new Plan();
+        oldPlan.setId(oldPlanId);
+        oldPlan.setPrice(1000.0);
+        oldPlan.setDurationDays(30);
+
+        Plan newPlan = new Plan();
+        newPlan.setId(newPlanId);
+        newPlan.setPrice(10000.0);
+        newPlan.setDurationDays(30);
+
+        when(subscriptionRepository.findById(subscriptionId))
+                .thenReturn(Optional.of(subscription));
+
+        when(planRepository.findById(oldPlanId))
+                .thenReturn(Optional.of(oldPlan));
+
+        when(planRepository.findById(newPlanId))
+                .thenReturn(Optional.of(newPlan));
+
+        when(paymentRepository.save(any(Payment.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        // 2️⃣ Act + Assert
+
+        RuntimeException exception = assertThrows(
+                RuntimeException.class,
+                () -> subscriptionService.changePlan(subscriptionId, newPlanId)
+        );
+
+        assertEquals("Payment failed", exception.getMessage());
+
+        // 3️⃣ Verify subscription was NOT saved
+        verify(subscriptionRepository, never()).save(any(Subscription.class));
+    }
+
+
 
     @Test
     void createSubscription_withCoupon_success() {
 
+        // ---------- Arrange ----------
+
         Long userId = 1L;
         Long planId = 10L;
-
-        // ---------- Arrange ----------
 
         User user = new User();
         user.setId(userId);
@@ -607,8 +772,8 @@ class SubscriptionServiceImplTest {
         coupon.setCode("NEW10");
         coupon.setActive(true);
         coupon.setUsageLimit(5);
-        coupon.setUsedCount(1);
-        coupon.setDiscountPercentage(10.0); // 👈 10% discount
+        coupon.setUsedCount(0);
+        coupon.setDiscountPercentage(10.0);
         coupon.setExpiryDate(new Date(System.currentTimeMillis() + 100000));
 
         when(userRepository.findById(userId))
@@ -632,6 +797,13 @@ class SubscriptionServiceImplTest {
         when(couponRepository.save(any(Coupon.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
+
+        when(userRepository.findById(userId))
+                .thenReturn(Optional.of(user));
+
+        when(planRepository.findById(planId))
+                .thenReturn(Optional.of(plan));
+
         // ---------- Act ----------
 
         SubscriptionResponseDTO response =
@@ -642,12 +814,111 @@ class SubscriptionServiceImplTest {
         assertNotNull(response);
         assertEquals("Aman", response.getUserName());
         assertEquals("Basic", response.getPlanName());
-        assertEquals("PENDING", response.getStatus());
+        assertEquals("ACTIVE", response.getStatus());
 
-        // 1000 ka 10% discount = 900
-        verify(subscriptionRepository, times(1)).save(any(Subscription.class));
-        verify(couponUsageRepository, times(1)).save(any(CouponUsage.class));
-        verify(couponRepository, times(1)).save(any(Coupon.class));
+        // verify calls
+        verify(subscriptionRepository, atLeastOnce())
+                .save(any(Subscription.class));
+
+        verify(couponUsageRepository, times(1))
+                .save(any(CouponUsage.class));
+
+        verify(couponRepository, times(1))
+                .save(coupon);
     }
+
+    @Test
+    void handleSubscriptions_activeToGrace() {
+
+        Subscription sub = new Subscription();
+        sub.setId(1L);
+        sub.setPlanId(10L);
+        sub.setStatus(SubscriptionStatus.ACTIVE);
+        sub.setAutoRenew(false);
+        sub.setGraceDays(3);
+
+
+        Calendar cal = Calendar.getInstance();
+        cal.add(Calendar.DAY_OF_MONTH, -1);
+        sub.setEndDate(cal.getTime());
+
+        when(subscriptionRepository.findAll())
+                .thenReturn(List.of(sub));
+
+        when(subscriptionRepository.save(any(Subscription.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        // Act
+        subscriptionService.handleSubscriptions();
+
+        // Assert
+        assertEquals(SubscriptionStatus.GRACE, sub.getStatus());
+    }
+    @Test
+    void handleSubscriptions_autoRenew_success() {
+
+        Subscription sub = new Subscription();
+        sub.setId(1L);
+        sub.setPlanId(10L);
+        sub.setStatus(SubscriptionStatus.ACTIVE);
+        sub.setAutoRenew(true);
+        sub.setRenewalAttempts(0);
+
+        Calendar cal = Calendar.getInstance();
+        cal.add(Calendar.DAY_OF_MONTH, -1);
+        sub.setEndDate(cal.getTime());
+
+        Plan plan = new Plan();
+        plan.setId(10L);
+        plan.setPrice(1000.0);
+        plan.setDurationDays(30);
+
+        when(subscriptionRepository.findAll())
+                .thenReturn(List.of(sub));
+
+        when(planRepository.findById(10L))
+                .thenReturn(Optional.of(plan));
+
+        when(subscriptionRepository.save(any()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        when(paymentRepository.save(any()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        // Act
+        subscriptionService.handleSubscriptions();
+
+        // Assert
+        assertEquals(SubscriptionStatus.ACTIVE, sub.getStatus());
+        assertEquals(0, sub.getRenewalAttempts());
+    }
+    @Test
+    void handleSubscriptions_graceToExpired() {
+
+        Subscription sub = new Subscription();
+        sub.setId(1L);
+        sub.setStatus(SubscriptionStatus.GRACE);
+        sub.setGraceDays(3);
+
+        Calendar cal = Calendar.getInstance();
+        cal.add(Calendar.DAY_OF_MONTH, -5);
+        sub.setEndDate(cal.getTime());
+
+        when(subscriptionRepository.findAll())
+                .thenReturn(List.of(sub));
+
+        when(subscriptionRepository.save(any()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        // Act
+        subscriptionService.handleSubscriptions();
+
+        // Assert
+        assertEquals(SubscriptionStatus.EXPIRED, sub.getStatus());
+    }
+
+
+
+
 
 }

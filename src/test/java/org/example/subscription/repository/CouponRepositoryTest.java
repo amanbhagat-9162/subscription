@@ -3,8 +3,9 @@ package org.example.subscription.repository;
 import org.example.subscription.entity.Coupon;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+//import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
-import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
+//import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.util.Optional;
@@ -14,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @DataJpaTest
 @ActiveProfiles("test")
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+//@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 class CouponRepositoryTest {
 
     @Autowired
@@ -54,5 +55,6 @@ class CouponRepositoryTest {
 
         assertTrue(found.isPresent());
         assertEquals("SAVE20", found.get().getCode());
+
     }
 }

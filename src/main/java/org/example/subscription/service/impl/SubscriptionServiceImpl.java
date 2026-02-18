@@ -9,12 +9,10 @@ import org.example.subscription.exception.ResourceNotFoundException;
 import org.example.subscription.repository.*;
 import org.example.subscription.service.SubscriptionService;
 //import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import java.util.Date;
-import java.util.Calendar;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -55,6 +53,14 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
         Plan plan = planRepository.findById(planId)
                 .orElseThrow(() -> new ResourceNotFoundException("Plan not found"));
+
+        // ===== CHECK ACTIVE SUBSCRIPTION =====
+        boolean alreadyActive = subscriptionRepository
+                .existsByUserIdAndStatus(userId, SubscriptionStatus.ACTIVE);
+
+        if (alreadyActive) {
+            throw new RuntimeException("User already has an active subscription");
+        }
 
         Subscription subscription = new Subscription();
         subscription.setUserId(user.getId());
@@ -153,6 +159,9 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         subscription.setFinalPrice(finalPrice);
 
         Subscription saved = subscriptionRepository.save(subscription);
+        saved.setStatus(SubscriptionStatus.ACTIVE);
+        subscriptionRepository.save(saved);
+
 
         return convertToDTO(saved);
     }
@@ -180,22 +189,124 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         return convertToDTO(subscriptionRepository.save(subscription));
     }
 
-//    // ================= SCHEDULER =================
+    @Scheduled(fixedRate = 10000)
+    public void handleSubscriptions() {
+
+        List<Subscription> allSubs = subscriptionRepository.findAll();
+        Date now = new Date();
+
+        for (Subscription sub : allSubs) {
+
+            // ================= ACTIVE → GRACE =================
+//            if (sub.getStatus() == SubscriptionStatus.ACTIVE
+//                    && sub.getEndDate().before(now)) {
 //
-////    @Scheduled(fixedRate = 10000)
-//    public void handleSubscriptions() {
-//
-//        List<Subscription> activeSubs =
-//                subscriptionRepository.findByStatus(SubscriptionStatus.ACTIVE);
-//
-//        for (Subscription sub : activeSubs) {
-//
-//            if (sub.getEndDate().before(new Date())) {
 //                sub.setStatus(SubscriptionStatus.GRACE);
 //                subscriptionRepository.save(sub);
 //            }
-//        }
-//    }
+            if (sub.getStatus() == SubscriptionStatus.ACTIVE
+                    && sub.getEndDate().before(now)) {
+
+                if (Boolean.TRUE.equals(sub.getAutoRenew())) {
+
+                    Plan plan = planRepository.findById(sub.getPlanId()).orElse(null);
+
+                    if (plan != null) {
+                        try {
+
+                            Payment payment = new Payment();
+                            payment.setSubscriptionId(sub.getId());
+                            payment.setAmount(plan.getPrice());
+                            payment.setPaymentMethod("AUTO_RENEW");
+                            payment.setPaymentStatus(PaymentStatus.SUCCESS);
+                            payment.setTransactionId("REN" + System.currentTimeMillis());
+
+
+                            payment.setPaymentDate(new Date());
+
+                            paymentRepository.save(payment);
+
+                            Calendar cal = Calendar.getInstance();
+                            cal.setTime(new Date());
+                            cal.add(Calendar.DAY_OF_MONTH, plan.getDurationDays());
+
+                            sub.setStartDate(new Date());
+                            sub.setEndDate(cal.getTime());
+                            sub.setRenewalAttempts(0);
+
+                            subscriptionRepository.save(sub);
+
+                            continue; // renewal done, skip GRACE
+                        } catch (Exception e) {
+
+                            sub.setRenewalAttempts(sub.getRenewalAttempts() + 1);
+
+                            if (sub.getRenewalAttempts() >= 3) {
+                                sub.setStatus(SubscriptionStatus.EXPIRED);
+                            } else {
+                                sub.setStatus(SubscriptionStatus.GRACE);
+                            }
+
+                            subscriptionRepository.save(sub);
+                        }
+                    }
+                } else {
+                    sub.setStatus(SubscriptionStatus.GRACE);
+                    subscriptionRepository.save(sub);
+                }
+            }
+
+
+            // ================= GRACE LOGIC =================
+            if (sub.getStatus() == SubscriptionStatus.GRACE) {
+
+
+//                if (sub.getAutoRenew()) {
+//
+//                    Plan plan = planRepository.findById(sub.getPlanId()).orElse(null);
+//
+//                    if (plan != null) {
+//
+//                        // Create Payment
+//                        Payment payment = new Payment();
+//                        payment.setSubscriptionId(sub.getId());
+//                        payment.setAmount(plan.getPrice());
+//                        payment.setPaymentMethod("AUTO_RENEW");
+//                        payment.setPaymentStatus(PaymentStatus.SUCCESS);
+//                        payment.setTransactionId("REN" + System.currentTimeMillis());
+//                        payment.setPaymentDate(new Date());
+//
+//                        paymentRepository.save(payment);
+//
+//                        // Extend subscription
+//                        Calendar cal = Calendar.getInstance();
+//                        cal.setTime(new Date());
+//                        cal.add(Calendar.DAY_OF_MONTH, plan.getDurationDays());
+//
+//                        sub.setStartDate(new Date());
+//                        sub.setEndDate(cal.getTime());
+//                        sub.setStatus(SubscriptionStatus.ACTIVE);
+//                        sub.setRenewalAttempts(0);
+//
+//                        subscriptionRepository.save(sub);
+//
+//                        continue; // skip expire logic
+//                    }
+//                }
+
+
+                Calendar cal = Calendar.getInstance();
+                cal.setTime(sub.getEndDate());
+//                cal.add(Calendar.DAY_OF_MONTH, 3);
+                cal.add(Calendar.DAY_OF_MONTH, sub.getGraceDays());
+
+                if (cal.getTime().before(now)) {
+                    sub.setStatus(SubscriptionStatus.EXPIRED);
+                    subscriptionRepository.save(sub);
+                }
+            }
+        }
+    }
 
     // ================= CHANGE PLAN =================
 
@@ -227,11 +338,20 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         payment.setSubscriptionId(subscription.getId());
         payment.setAmount(Math.max(finalAmount, 0));
         payment.setPaymentMethod("UPGRADE");
-        payment.setPaymentStatus(PaymentStatus.SUCCESS);
+//        payment.setPaymentStatus(PaymentStatus.SUCCESS);
+        if (finalAmount > 5000) {
+            payment.setPaymentStatus(PaymentStatus.FAILED);
+        } else {
+            payment.setPaymentStatus(PaymentStatus.SUCCESS);
+        }
+
         payment.setTransactionId("UPG" + System.currentTimeMillis());
         payment.setPaymentDate(new Date());
 
         paymentRepository.save(payment);
+        if(payment.getPaymentStatus() == PaymentStatus.FAILED){
+            throw new RuntimeException("Payment failed");
+        }
 
         Calendar calendar = Calendar.getInstance();
         calendar.setTime(new Date());
@@ -249,15 +369,19 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     // ================= DTO CONVERTER =================
 
     private SubscriptionResponseDTO convertToDTO(Subscription sub) {
-        User user = userRepository.findById(sub.getUserId()).orElse(null);
-        Plan plan = planRepository.findById(sub.getPlanId()).orElse(null);
+//        User user = userRepository.findById(sub.getUserId()).orElse(null);
+        User user = userRepository.findById(sub.getUserId())
+                .orElseThrow(() -> new ResourceNotFoundException("User missing"));
+
+        Plan plan = planRepository.findById(sub.getPlanId())
+                .orElseThrow(() -> new ResourceNotFoundException("Plan missing"));
 
         return new SubscriptionResponseDTO(
                 sub.getId(),
 //                sub.getUser().getName(),
 //                sub.getPlan().getName(),
-                user != null ? user.getName() : null,
-                plan != null ? plan.getName() : null,
+                user.getName(),
+                plan.getName(),
                 sub.getStartDate(),
                 sub.getEndDate(),
                 sub.getStatus().name()
