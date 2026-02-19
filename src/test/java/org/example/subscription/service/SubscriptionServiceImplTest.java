@@ -50,6 +50,12 @@ class SubscriptionServiceImplTest {
     @InjectMocks
     private SubscriptionServiceImpl subscriptionService;
 
+    @Mock
+    private AddOnRepository addOnRepository;
+
+    @Mock
+    private SubscriptionAddOnRepository subscriptionAddOnRepository;
+
 
 //    @BeforeEach
 //    void setUp() {
@@ -915,6 +921,83 @@ class SubscriptionServiceImplTest {
 
         // Assert
         assertEquals(SubscriptionStatus.EXPIRED, sub.getStatus());
+    }
+
+
+    @Test
+    void handleSubscriptions_autoRenew_withRecurringAddOn_success() {
+
+        // -------- Arrange --------
+
+        Long subscriptionId = 1L;
+        Long planId = 10L;
+        Long addOnId = 100L;
+
+        // Subscription (expired yesterday)
+        Subscription sub = new Subscription();
+        sub.setId(subscriptionId);
+        sub.setPlanId(planId);
+        sub.setStatus(SubscriptionStatus.ACTIVE);
+        sub.setAutoRenew(true);
+        sub.setRenewalAttempts(0);
+
+        Calendar cal = Calendar.getInstance();
+        cal.add(Calendar.DAY_OF_MONTH, -1);
+        sub.setEndDate(cal.getTime());
+
+        // Plan
+        Plan plan = new Plan();
+        plan.setId(planId);
+        plan.setPrice(1000.0);
+        plan.setDurationDays(30);
+
+        // AddOn
+        AddOn addOn = new AddOn();
+        addOn.setId(addOnId);
+        addOn.setPrice(200.0);
+        addOn.setRecurring(true);
+
+        // SubscriptionAddOn
+        SubscriptionAddOn sa = new SubscriptionAddOn();
+        sa.setSubscriptionId(subscriptionId);
+        sa.setAddOnId(addOnId);
+        sa.setActive(true);
+
+        // Mocking
+        when(subscriptionRepository.findAll())
+                .thenReturn(List.of(sub));
+
+        when(planRepository.findById(planId))
+                .thenReturn(Optional.of(plan));
+
+        when(subscriptionAddOnRepository
+                .findBySubscriptionIdAndActiveTrue(subscriptionId))
+                .thenReturn(List.of(sa));
+
+        when(addOnRepository.findById(addOnId))
+                .thenReturn(Optional.of(addOn));
+
+        when(paymentRepository.save(any(Payment.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        when(subscriptionRepository.save(any(Subscription.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        // -------- Act --------
+
+        subscriptionService.handleSubscriptions();
+
+        // -------- Assert --------
+
+        assertEquals(SubscriptionStatus.ACTIVE, sub.getStatus());
+        assertEquals(0, sub.getRenewalAttempts());
+
+        // Verify payment amount = 1000 + 200
+        verify(paymentRepository).save(
+                argThat(payment ->
+                        payment.getAmount().equals(1200.0)
+                )
+        );
     }
 
 

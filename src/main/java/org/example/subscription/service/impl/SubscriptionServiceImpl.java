@@ -11,6 +11,11 @@ import org.example.subscription.service.SubscriptionService;
 //import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.example.subscription.repository.AddOnRepository;
+import org.example.subscription.repository.SubscriptionAddOnRepository;
+import org.example.subscription.entity.AddOn;
+import org.example.subscription.entity.SubscriptionAddOn;
+
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -24,6 +29,9 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     private final PaymentRepository paymentRepository;
     private final CouponRepository couponRepository;
     private final CouponUsageRepository couponUsageRepository;
+    private final AddOnRepository addOnRepository;
+    private final SubscriptionAddOnRepository subscriptionAddOnRepository;
+
 
 
     public SubscriptionServiceImpl(
@@ -31,7 +39,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
             UserRepository userRepository,
             PlanRepository planRepository,
             PaymentRepository paymentRepository,
-            CouponRepository couponRepository, CouponUsageRepository couponUsageRepository) {
+            CouponRepository couponRepository, CouponUsageRepository couponUsageRepository, AddOnRepository addOnRepository, SubscriptionAddOnRepository subscriptionAddOnRepository) {
 
         this.subscriptionRepository = subscriptionRepository;
         this.userRepository = userRepository;
@@ -39,6 +47,8 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         this.paymentRepository = paymentRepository;
         this.couponRepository = couponRepository;
         this.couponUsageRepository = couponUsageRepository;
+        this.addOnRepository = addOnRepository;
+        this.subscriptionAddOnRepository = subscriptionAddOnRepository;
     }
 
     // ================= CREATE SUBSCRIPTION =================
@@ -216,7 +226,24 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
                             Payment payment = new Payment();
                             payment.setSubscriptionId(sub.getId());
-                            payment.setAmount(plan.getPrice());
+//                            payment.setAmount(plan.getPrice());
+
+                            double totalAmount = plan.getPrice();
+
+// Fetch active addons
+                            List<SubscriptionAddOn> addOns =
+                                    subscriptionAddOnRepository
+                                            .findBySubscriptionIdAndActiveTrue(sub.getId());
+
+                            for (SubscriptionAddOn sa : addOns) {
+                                AddOn addOn = addOnRepository.findById(sa.getAddOnId()).orElse(null);
+                                if (addOn != null && Boolean.TRUE.equals(addOn.getRecurring())) {
+                                    totalAmount += addOn.getPrice();
+                                }
+                            }
+
+                            payment.setAmount(totalAmount);
+
                             payment.setPaymentMethod("AUTO_RENEW");
                             payment.setPaymentStatus(PaymentStatus.SUCCESS);
                             payment.setTransactionId("REN" + System.currentTimeMillis());

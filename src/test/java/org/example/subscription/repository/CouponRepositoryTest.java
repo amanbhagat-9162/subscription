@@ -21,21 +21,21 @@ class CouponRepositoryTest {
     @Autowired
     private CouponRepository couponRepository;
 
-//    @Test
-//    void saveCoupon_success() {
-//
-//        Coupon coupon = new Coupon();
-//        coupon.setCode("NEW10");
-//        coupon.setActive(true);
-//        coupon.setUsageLimit(5);
-//        coupon.setUsedCount(0);
-//        coupon.setDiscountPercentage(10.0);
-//        coupon.setExpiryDate(new Date());
-//
-//        Coupon saved = couponRepository.save(coupon);
-//
-//        assertNotNull(saved.getId());
-//    }
+    @Test
+    void saveCoupon_success() {
+
+        Coupon coupon = new Coupon();
+        coupon.setCode("NEW10");
+        coupon.setActive(true);
+        coupon.setUsageLimit(5);
+        coupon.setUsedCount(0);
+        coupon.setDiscountPercentage(10.0);
+        coupon.setExpiryDate(new Date());
+
+        Coupon saved = couponRepository.save(coupon);
+
+        assertNotNull(saved.getId());
+    }
 
     @Test
     void findByCode_success() {
