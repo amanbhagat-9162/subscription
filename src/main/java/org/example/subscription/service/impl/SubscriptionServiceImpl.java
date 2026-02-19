@@ -7,6 +7,7 @@ import org.example.subscription.enums.PaymentStatus;
 import org.example.subscription.enums.SubscriptionStatus;
 import org.example.subscription.exception.ResourceNotFoundException;
 import org.example.subscription.repository.*;
+import org.example.subscription.service.DunningService;
 import org.example.subscription.service.SubscriptionService;
 //import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -31,6 +32,8 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     private final CouponUsageRepository couponUsageRepository;
     private final AddOnRepository addOnRepository;
     private final SubscriptionAddOnRepository subscriptionAddOnRepository;
+    private final DunningService dunningService;
+
 
 
 
@@ -39,7 +42,11 @@ public class SubscriptionServiceImpl implements SubscriptionService {
             UserRepository userRepository,
             PlanRepository planRepository,
             PaymentRepository paymentRepository,
-            CouponRepository couponRepository, CouponUsageRepository couponUsageRepository, AddOnRepository addOnRepository, SubscriptionAddOnRepository subscriptionAddOnRepository) {
+            CouponRepository couponRepository,
+            CouponUsageRepository couponUsageRepository,
+            AddOnRepository addOnRepository,
+            SubscriptionAddOnRepository subscriptionAddOnRepository,
+            DunningService dunningService) {
 
         this.subscriptionRepository = subscriptionRepository;
         this.userRepository = userRepository;
@@ -49,6 +56,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         this.couponUsageRepository = couponUsageRepository;
         this.addOnRepository = addOnRepository;
         this.subscriptionAddOnRepository = subscriptionAddOnRepository;
+        this.dunningService = dunningService;
     }
 
     // ================= CREATE SUBSCRIPTION =================
@@ -226,11 +234,11 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
                             Payment payment = new Payment();
                             payment.setSubscriptionId(sub.getId());
-//                            payment.setAmount(plan.getPrice());
+//                          payment.setAmount(plan.getPrice());
 
                             double totalAmount = plan.getPrice();
 
-// Fetch active addons
+                                     // Fetch active addons
                             List<SubscriptionAddOn> addOns =
                                     subscriptionAddOnRepository
                                             .findBySubscriptionIdAndActiveTrue(sub.getId());
@@ -265,16 +273,17 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
                             continue; // renewal done, skip GRACE
                         } catch (Exception e) {
+                            dunningService.handleFailedPayment(sub, "Payment Failed");
 
-                            sub.setRenewalAttempts(sub.getRenewalAttempts() + 1);
-
-                            if (sub.getRenewalAttempts() >= 3) {
-                                sub.setStatus(SubscriptionStatus.EXPIRED);
-                            } else {
-                                sub.setStatus(SubscriptionStatus.GRACE);
-                            }
-
-                            subscriptionRepository.save(sub);
+//                            sub.setRenewalAttempts(sub.getRenewalAttempts() + 1);
+//
+//                            if (sub.getRenewalAttempts() >= 3) {
+//                                sub.setStatus(SubscriptionStatus.EXPIRED);
+//                            } else {
+//                                sub.setStatus(SubscriptionStatus.GRACE);
+//                            }
+//
+//                            subscriptionRepository.save(sub);
                         }
                     }
                 } else {
